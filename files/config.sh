@@ -459,10 +459,20 @@ test_domain() {
     domain=$(echo "$domain" | sed 's/#.*//' | xargs)
     [[ -z "$domain" ]] && return
 
-    # Временный файл для хранения результатов
-    local r_file="$(mktemp)"
+    
+    if [[ "$domain" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        test_ip "$domain"
+        return
+    fi
+    # Временная папка для хранения результатов
+    local tmp=$(mktemp -d) # Сразу проблема, что при каждом вызове test_domain создаётся и удаляется папка.
     # FAIL - результат по-умолчанию для ping http tls1.2 tls1.3 (построчно)
-    echo -en "FAIL\nFAIL\nFAIL\nFAIL" > "$r_file"
+    # echo -en "FAIL\nFAIL\nFAIL\nFAIL" > "$r_file/h"
+    echo "FAIL" > "$tmp/p"
+    echo "FAIL" > "$tmp/h"
+    echo "FAIL" > "$tmp/t12"
+    echo "FAIL" > "$tmp/t13"
+    
 
     # Таймауты
     local t_ping=2
@@ -470,39 +480,38 @@ test_domain() {
 
     if [[ "$domain" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         test_ip "$domain"
+        
     else
         # Асинхронно запустим ping, http и https.
         # sed запишет результат строго в указанную строку
         {
             result=$(ping -c 2 -W $t_ping "$domain" 2>/dev/null | grep -E "rtt min/avg/max/mdev" | awk -F'/' '{print $5}')
-            if [[ -n "$result" ]]; then
-                sed -i "1c\\${result}ms" "$r_file"
-            fi
+            [[ -n "$result" ]] && echo "${result}ms" > "$tmp/ping"
         } &
         {
             result=$(curl -m $t_http -s -o /dev/null -w "%{http_code}" "http://$domain" 2>/dev/null || echo "FAIL")
-            if [[ "$result" =~ ^[0-9]+$ ]]; then
-                sed -i "2c\\HTTP:$result" "$r_file"
-            fi
+            [[ "$result" =~ ^[0-9]+$ ]] && echo "HTTP:$result" > "$tmp/curl"
         } &
         # https будет синхронным - в обоих случаях подключение идет по одному и тому же порту (443)
         # и будет некорректно запускать оба подключения одновременно.
         {
-            result=$(curl -m $t_http -s -o /dev/null -w "%{http_code}" --tlsv1.2 "https://$domain" 2>/dev/null || echo "FAIL")
-            if [[ "$result" =~ ^[0-9]+$ ]]; then
-                sed -i "3c\\TLS1.2:$result" "$r_file"
-            fi
-            result=$(curl -m $t_http -s -o /dev/null -w "%{http_code}" --tlsv1.3 "https://$domain" 2>/dev/null || echo "FAIL")
-            if [[ "$result" =~ ^[0-9]+$ ]]; then
-                sed -i "4c\\TLS1.3:$result" "$r_file"
-            fi
+            result12=$(curl -m $t_http -s -o /dev/null -w "%{http_code}" --tlsv1.2 "https://$domain" 2>/dev/null || echo "FAIL")
+            [[ "$result12" =~ ^[0-9]+$ ]] && echo "HTTP:$result12" > "$tmp/tls12"
+            
+            result13=$(curl -m $t_http -s -o /dev/null -w "%{http_code}" --tlsv1.3 "https://$domain" 2>/dev/null || echo "FAIL")
+            [[ "$result13" =~ ^[0-9]+$ ]] && echo "HTTP:$result13" > "$tmp/tls13"
         } &
     fi
 
     # Ждем окончания всех запросов, объединяем строки с результатами в одну, удаляем временный файл
     wait
-    echo $(paste -sd ' ' "$r_file")
-    rm -f "$r_file"
+
+    local ping=$(cat "$tmp/ping")
+    local curl=$(cat "$tmp/curl")
+    local tls12=$(cat "$tmp/tls12")
+    local tls13=$(cat "$tmp/tls13")
+    echo "$ping $curl $tls12 $tls13"
+    rm -rf "$tmp"
 }
 
 test_ip() {
