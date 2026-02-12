@@ -468,10 +468,10 @@ test_domain() {
     local tmp=$(mktemp -d) # Сразу проблема, что при каждом вызове test_domain создаётся и удаляется папка.
     # FAIL - результат по-умолчанию для ping http tls1.2 tls1.3 (построчно)
     # echo -en "FAIL\nFAIL\nFAIL\nFAIL" > "$r_file/h"
-    echo "FAIL" > "$tmp/p"
-    echo "FAIL" > "$tmp/h"
-    echo "FAIL" > "$tmp/t12"
-    echo "FAIL" > "$tmp/t13"
+    echo "FAIL" > "$tmp/ping"
+    echo "FAIL" > "$tmp/curl"
+    echo "FAIL" > "$tmp/tls12"
+    echo "FAIL" > "$tmp/tls13"
     
 
     # Таймауты
